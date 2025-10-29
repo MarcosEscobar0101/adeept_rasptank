@@ -1,61 +1,61 @@
 #!/usr/bin/python3
-# File name   : Ultrasonic.py
-# Description : Detection distance and tracking with ultrasonic
-# Website     : www.gewbot.com
-# Author      : William
-# Date        : 2019/02/23
+# ultra.py — HC-SR04 con BCM11=TRIG y BCM8=ECHO (SPI deshabilitado)
+# Incluye pull-down en ECHO y timeouts para evitar bloqueos.
+
 import RPi.GPIO as GPIO
 import time
+from statistics import median
 
-Tr = 11
-Ec = 8
+TRIG_BCM = 11   # TRIG  (pin físico 23)
+ECHO_BCM = 8    # ECHO  (pin físico 24) → usar divisor 2:1 a 3.3V
+SPEED_SOUND = 340.0
+ECHO_TIMEOUT = 0.12
+SAMPLES = 5
 
 GPIO.setwarnings(False)
 GPIO.setmode(GPIO.BCM)
-GPIO.setup(Tr, GPIO.OUT,initial=GPIO.LOW)
-GPIO.setup(Ec, GPIO.IN)
+GPIO.setup(TRIG_BCM, GPIO.OUT, initial=GPIO.LOW)
+GPIO.setup(ECHO_BCM, GPIO.IN, pull_up_down=GPIO.PUD_DOWN)
 
-def checkdist():       #Reading distance
-    for i in range(5):  # Remove invalid test results.
-        GPIO.setwarnings(False)
-        GPIO.setmode(GPIO.BCM)
-        GPIO.setup(Tr, GPIO.OUT,initial=GPIO.LOW)
-        GPIO.setup(Ec, GPIO.IN)
-        GPIO.output(Tr, GPIO.LOW)
-        time.sleep(0.000002)
-        GPIO.output(Tr, GPIO.HIGH)
-        time.sleep(0.000015)
-        GPIO.output(Tr, GPIO.LOW)
-        while not GPIO.input(Ec):
-            pass
-        t1 = time.time()
-        while GPIO.input(Ec):
-            pass
-        t2 = time.time()
-        dist = (t2-t1)*340/2
-        if dist > 9 and i < 4:  # 5 consecutive times are invalid data, return the last test data
-            continue
-        else:
-            return (t2-t1)*340/2
+def _pulse_once(timeout=ECHO_TIMEOUT):
+    # Pulso de ~10-12 us
+    GPIO.output(TRIG_BCM, GPIO.LOW);  time.sleep(0.000005)
+    GPIO.output(TRIG_BCM, GPIO.HIGH); time.sleep(0.000012)
+    GPIO.output(TRIG_BCM, GPIO.LOW)
 
-# def checkdist():       #Reading distance
-#     GPIO.setmode(GPIO.BCM)
-#     GPIO.setup(Tr, GPIO.OUT,initial=GPIO.LOW)
-#     GPIO.setup(Ec, GPIO.IN)
-#     GPIO.output(Tr, GPIO.HIGH)
-#     time.sleep(0.000015)
-#     GPIO.output(Tr, GPIO.LOW)
-#     while not GPIO.input(Ec):
-#         pass
-#     t1 = time.time()
-#     while GPIO.input(Ec):
-#         pass
-#     t2 = time.time()
-#     return round((t2-t1)*340/2,2)
-#     #return (t2-t1)*340/2
+    t0 = time.time()
+    while not GPIO.input(ECHO_BCM):
+        if time.time() - t0 > timeout:
+            return None
+    t1 = time.time()
+    while GPIO.input(ECHO_BCM):
+        if time.time() - t1 > timeout:
+            return None
+    t2 = time.time()
+
+    return (t2 - t1) * SPEED_SOUND / 2.0  # metros
+
+def checkdist():
+    """Devuelve distancia en metros (o None si no hay lectura)."""
+    vals = []
+    for _ in range(SAMPLES):
+        d = _pulse_once()
+        if d is not None:
+            vals.append(d)
+        time.sleep(0.02)
+    return median(vals) if vals else None
 
 if __name__ == '__main__':
-    while True:
-        distance = checkdist()*100
-        print("%.2f cm" %distance)
-        time.sleep(1)
+    try:
+        print("Leyendo ultrasonido… (Ctrl+C para salir)")
+        while True:
+            d = checkdist()
+            if d is None:
+                print("Sin lectura (Vcc=5V, GND común, TRIG=BCM11, ECHO=BCM8 con divisor 2:1)")
+            else:
+                print(f"{d*100:.2f} cm")
+            time.sleep(0.3)
+    except KeyboardInterrupt:
+        pass
+    finally:
+        GPIO.cleanup((TRIG_BCM, ECHO_BCM))
