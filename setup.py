@@ -59,7 +59,7 @@ commands_2 = [
     "sudo pip3 install -r //home/pi/adeept_rasptank/server/requirements.txt",
     "sudo git clone https://github.com/oblique/create_ap",
     "cd " + thisPath + "/create_ap && sudo make install",
-    "cd //home/pi/create_ap && sudo make install",
+    "cd /home/pi/create_ap && sudo make install",
     "sudo apt-get install -y util-linux procps hostapd iproute2 iw haveged dnsmasq"
 ]
 
@@ -97,8 +97,8 @@ except:
 
 
 try:
-    os.system('sudo touch //home/pi/startup.sh')
-    with open("//home/pi/startup.sh",'w') as file_to_write:
+    os.system('sudo touch /home/pi/startup.sh')
+    with open("/home/pi/startup.sh",'w') as file_to_write:
         #you can choose how to control the robot
         file_to_write.write("#!/bin/sh\nsudo python3 " + thisPath + "/server/webServer.py")
 #       file_to_write.write("#!/bin/sh\nsudo python3 " + thisPath + "/server/server.py")
@@ -106,7 +106,7 @@ except:
     pass
 
 
-os.system('sudo chmod 777 //home/pi/startup.sh')
+os.system('sudo chmod 777 /home/pi/startup.sh')
 
 replace_num('/etc/rc.local','fi','fi\n//home/pi/startup.sh start')
 
@@ -117,9 +117,9 @@ try: #fix conflict with onboard Raspberry Pi audio
 except:
     pass
 try:
-    os.system("sudo cp -f //home/pi/adeept_rasptank/server/config.txt //etc/config.txt")
+    os.system("sudo cp -f /home/pi/adeept_rasptank/server/config.txt /etc/config.txt")
 except:
-    os.system("sudo cp -f "+ thisPath  +"/adeept_rasptank/server/config.txt //etc/config.txt")
+    os.system("sudo cp -f "+ thisPath  +"/adeept_rasptank/server/config.txt /etc/config.txt")
 print('The program in Raspberry Pi has been installed, disconnected and restarted. \nYou can now power off the Raspberry Pi to install the camera and driver board (Robot HAT). \nAfter turning on again, the Raspberry Pi will automatically run the program to set the servos port signal to turn the servos to the middle position, which is convenient for mechanical assembly.')
 print('restarting...')
 os.system("sudo reboot")
