@@ -1,125 +1,193 @@
 #!/usr/bin/python3
-# File name   : setup.py
-# Author      : Adeept
-# Date        : 2020/3/14
+# File name   : setup.py (Bookworm-ready)
+# Author      : Adeept (modernizado por ChatGPT)
+# Date        : 2025/10/29
 
 import os
-import time
+import sys
+import shutil
+import subprocess
 
-curpath = os.path.realpath(__file__)
-thisPath = "/" + os.path.dirname(curpath)
+def run(cmd, check=True):
+    print(f"\n==> {cmd}")
+    rc = subprocess.call(cmd, shell=True)
+    if check and rc != 0:
+        print(f"[WARN] Comando falló (rc={rc}): {cmd}")
+    return rc
 
-def replace_num(file,initial,new_num):
-    newline=""
-    str_num=str(new_num)
-    with open(file,"r") as f:
-        for line in f.readlines():
-            if(line.find(initial) == 0):
-                line = (str_num+'\n')
-            newline += line
-    with open(file,"w") as f:
-        f.writelines(newline)
+def which(p):
+    return shutil.which(p) is not None
 
-commands_1 = [
-    "sudo apt-get update",
-    "sudo apt-get purge -y wolfram-engine",
-    "sudo apt-get purge -y libreoffice*",
-    "sudo apt-get -y clean",
-    "sudo apt-get -y autoremove",
-    "sudo pip3 install -U pip",
-    "sudo apt-get install -y python-dev python-pip libfreetype6-dev libjpeg-dev build-essential",
-    "sudo apt-get install -y i2c-tools",
-    "sudo -H pip3 install --upgrade luma.oled",
-    "sudo pip3 install adafruit-pca9685",
-    "sudo pip3 install rpi_ws281x",
-    "sudo apt-get install -y python3-smbus",
-    "sudo pip3 install mpu6050-raspberrypi",
-    "sudo pip3 install flask",
-    "sudo pip3 install flask_cors",
-    "sudo pip3 install websockets",
-    "sudo apt-get install -y libjasper-dev",
-    "sudo apt-get install -y libatlas-base-dev",
-    "sudo apt-get install -y libgstreamer1.0-0",
-    "sudo apt-get install  -y python3-opencv"
-]
+# Rutas del proyecto/venv
+CUR_FILE = os.path.abspath(__file__)
+PROJECT_DIR = os.path.abspath(os.path.dirname(CUR_FILE))            # /home/pi/adeept_rasptank
+SERVER_DIR  = os.path.join(PROJECT_DIR, "server")
+WEBSERVER   = os.path.join(SERVER_DIR, "webServer.py")
+VENV_DIR    = "/opt/rasptank-venv"
+VENV_PY     = os.path.join(VENV_DIR, "bin", "python3")
+VENV_PIP    = os.path.join(VENV_DIR, "bin", "pip")
 
-mark_1 = 0
-for x in range(3):
-    for command in commands_1:
-        if os.system(command) != 0:
-            print("Error running installation step 1")
-            mark_1 = 1
-    if mark_1 == 0:
-        break
+# Detecta archivo config.txt (Bookworm usa /boot/firmware)
+BOOT_CONFIGS = ["/boot/firmware/config.txt", "/boot/config.txt"]
+def get_boot_config():
+    for p in BOOT_CONFIGS:
+        if os.path.exists(p):
+            return p
+    # por compatibilidad, devuelve el primero aunque no exista
+    return BOOT_CONFIGS[0]
 
+def ensure_line(path, line):
+    """Asegura que una línea EXACTA exista en el archivo (si no, la añade)."""
+    try:
+        with open(path, "r", encoding="utf-8", errors="ignore") as f:
+            data = f.read()
+    except FileNotFoundError:
+        data = ""
+    if line.strip() not in [l.strip() for l in data.splitlines()]:
+        data = (data.rstrip("\n") + "\n" + line.strip() + "\n").lstrip("\n")
+        with open(path, "w", encoding="utf-8") as f:
+            f.write(data)
+        print(f"[OK] Añadida línea a {path}: {line.strip()}")
+    else:
+        print(f"[OK] Línea ya presente en {path}: {line.strip()}")
 
-commands_2 = [
-    "sudo pip3 install RPi.GPIO",
-    "sudo apt-get -y install libqtgui4 libhdf5-dev libhdf5-serial-dev libatlas-base-dev libjasper-dev libqt4-test",
-    "sudo pip3 install -r //home/pi/adeept_rasptank/server/requirements.txt",
-    "sudo git clone https://github.com/oblique/create_ap",
-    "cd " + thisPath + "/create_ap && sudo make install",
-    "cd /home/pi/create_ap && sudo make install",
-    "sudo apt-get install -y util-linux procps hostapd iproute2 iw haveged dnsmasq"
-]
+def sed_comment(path, startswith):
+    """Comenta cualquier línea que empiece por 'startswith' (si existe)."""
+    if not os.path.exists(path):
+        return
+    out_lines = []
+    changed = False
+    with open(path, "r", encoding="utf-8", errors="ignore") as f:
+        for line in f:
+            if line.strip().startswith(startswith):
+                if not line.strip().startswith("#"):
+                    out_lines.append("#" + line)
+                    changed = True
+                else:
+                    out_lines.append(line)
+            else:
+                out_lines.append(line)
+    if changed:
+        with open(path, "w", encoding="utf-8") as f:
+            f.writelines(out_lines)
+        print(f"[OK] Comentada(s) línea(s) '{startswith}' en {path}")
 
-mark_2 = 0
-for x in range(3):
-    for command in commands_2:
-        if os.system(command) != 0:
-            print("Error running installation step 2")
-            mark_2 = 1
-    if mark_2 == 0:
-        break
+def write_unit_file():
+    UNIT_PATH = "/etc/systemd/system/rasptank.service"
+    unit = f"""[Unit]
+Description=RaspTank Web Server
+After=network-online.target
+Wants=network-online.target
 
-commands_3 = [
-    "sudo pip3 install numpy",
-    #"sudo pip3 install opencv-contrib-python==3.4.3.18",
-    # "sudo pip3 install opencv-contrib-python==3.4.17.61",
-    "sudo pip3 install imutils zmq pybase64 psutil"
-]
+[Service]
+Type=simple
+User=root
+Environment=PYTHONUNBUFFERED=1
+WorkingDirectory={SERVER_DIR}
+ExecStart={VENV_PY} {WEBSERVER}
+Restart=on-failure
 
-mark_3 = 0
-for x in range(3):
-    for command in commands_3:
-        if os.system(command) != 0:
-            print("Error running installation step 3")
-            mark_3 = 1
-    if mark_3 == 0:
-        break
+[Install]
+WantedBy=multi-user.target
+"""
+    with open(UNIT_PATH, "w", encoding="utf-8") as f:
+        f.write(unit)
+    print(f"[OK] Creado servicio systemd: {UNIT_PATH}")
+    run("systemctl daemon-reload")
+    run("systemctl enable --now rasptank.service")
 
+def main():
+    if os.geteuid() != 0:
+        print("Este script debe ejecutarse como root (sudo).")
+        sys.exit(1)
 
-try:
-    replace_num("/boot/config.txt", '#dtparam=i2c_arm=on','dtparam=i2c_arm=on\nstart_x=1\n')
-except:
-    print('Error updating boot config to enable i2c. Please try again.')
+    # 1) Paquetes APT modernos (sin Qt4 ni create_ap)
+    run("apt-get update")
+    # Limpiezas de espacio (opcionales)
+    run("apt-get purge -y wolfram-engine", check=False)
+    run("apt-get purge -y 'libreoffice*'", check=False)
+    run("apt-get -y autoremove", check=False)
+    run("apt-get -y clean", check=False)
 
+    # Base para Python + HW + OpenCV + GStreamer + GPIO + WS281x
+    apt_pkgs = [
+        "python3-full", "python3-venv", "python3-dev", "python3-pip",
+        "i2c-tools", "python3-smbus", "libatlas-base-dev",
+        "gstreamer1.0-tools", "gstreamer1.0-libav",
+        "gstreamer1.0-plugins-base", "gstreamer1.0-plugins-good",
+        "python3-opencv", "python3-rpi.gpio", "python3-rpi-ws281x"
+    ]
+    run("apt-get install -y " + " ".join(apt_pkgs))
 
+    # 2) Crear/actualizar venv (evita PEP 668)
+    if not os.path.exists(VENV_DIR):
+        run(f"python3 -m venv {VENV_DIR}")
+    # Upgrade pip en el venv
+    run(f"{VENV_PIP} install --upgrade pip wheel setuptools")
 
-try:
-    os.system('sudo touch /home/pi/startup.sh')
-    with open("/home/pi/startup.sh",'w') as file_to_write:
-        #you can choose how to control the robot
-        file_to_write.write("#!/bin/sh\nsudo python3 " + thisPath + "/server/webServer.py")
-#       file_to_write.write("#!/bin/sh\nsudo python3 " + thisPath + "/server/server.py")
-except:
-    pass
+    # 3) Instalar dependencias Python EN el venv (no en el sistema)
+    # Nota: No instalamos OpenCV por pip; ya lo instalamos por APT.
+    py_pkgs = [
+        "flask", "flask_cors", "websockets",
+        "imutils", "pyzmq", "pybase64", "psutil",
+        "luma.oled", "mpu6050-raspberrypi", "Adafruit_PCA9685"
+    ]
+    run(f"{VENV_PIP} install " + " ".join(py_pkgs))
 
+    # 4) I2C y cámara (stack moderno: SIN start_x=1)
+    if which("raspi-config"):
+        run("raspi-config nonint do_i2c 0", check=False)
 
-os.system('sudo chmod 777 /home/pi/startup.sh')
+    boot_cfg = get_boot_config()
+    # Asegura i2c activado
+    ensure_line(boot_cfg, "dtparam=i2c_arm=on")
+    # Quita start_x=1 si alguien lo dejó
+    sed_comment(boot_cfg, "start_x=1")
 
-replace_num('/etc/rc.local','fi','fi\n//home/pi/startup.sh start')
+    # 5) (Opcional) Copiar /etc/config.txt si existe en el proyecto
+    src_cfg = os.path.join(SERVER_DIR, "config.txt")
+    if os.path.exists(src_cfg):
+        try:
+            shutil.copyfile(src_cfg, "/etc/config.txt")
+            print("[OK] Copiado config.txt a /etc/config.txt")
+        except Exception as e:
+            print(f"[WARN] No se pudo copiar /etc/config.txt: {e}")
 
-try: #fix conflict with onboard Raspberry Pi audio
-    os.system('sudo touch /etc/modprobe.d/snd-blacklist.conf')
-    with open("/etc/modprobe.d/snd-blacklist.conf",'w') as file_to_write:
-        file_to_write.write("blacklist snd_bcm2835")
-except:
-    pass
-try:
-    os.system("sudo cp -f /home/pi/adeept_rasptank/server/config.txt /etc/config.txt")
-except:
-    os.system("sudo cp -f "+ thisPath  +"/adeept_rasptank/server/config.txt /etc/config.txt")
-print('The program in Raspberry Pi has been installed, disconnected and restarted. \nYou can now power off the Raspberry Pi to install the camera and driver board (Robot HAT). \nAfter turning on again, the Raspberry Pi will automatically run the program to set the servos port signal to turn the servos to the middle position, which is convenient for mechanical assembly.')
-print('restarting...')
-os.system("sudo reboot")
+    # 6) Crear servicio systemd en lugar de rc.local/startup.sh
+    # Limpia restos antiguos si existen
+    try:
+        if os.path.exists("/home/pi/startup.sh"):
+            os.remove("/home/pi/startup.sh")
+            print("[OK] Eliminado /home/pi/startup.sh legado")
+    except Exception as e:
+        print(f"[WARN] No se pudo eliminar startup.sh: {e}")
+
+    # Quita inyección de rc.local (si quedó en instalaciones viejas)
+    rc_local = "/etc/rc.local"
+    if os.path.exists(rc_local):
+        try:
+            with open(rc_local, "r", encoding="utf-8", errors="ignore") as f:
+                data = f.read()
+            new_data = data.replace("//home/pi/startup.sh start", "")
+            if new_data != data:
+                with open(rc_local, "w", encoding="utf-8") as f:
+                    f.write(new_data)
+                print("[OK] Limpiada llamada a startup.sh en /etc/rc.local")
+        except Exception as e:
+            print(f"[WARN] No se pudo limpiar /etc/rc.local: {e}")
+
+    write_unit_file()
+
+    print("\n===================================================")
+    print(" Instalación completa.")
+    print(" - Entorno venv:   ", VENV_DIR)
+    print(" - Servicio:        rasptank.service (systemd)")
+    print(" - WebServer:      ", WEBSERVER)
+    print(" - Boot config:    ", boot_cfg, " (i2c habilitado)")
+    print("===================================================\n")
+
+    # No forzamos reboot. Si lo deseas:
+    # run("reboot")
+
+if __name__ == "__main__":
+    main()
