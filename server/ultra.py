@@ -7,7 +7,8 @@ import time
 from statistics import median
 
 TRIG_BCM = 11   # TRIG  (pin físico 23)
-ECHO_BCM = 8    # ECHO  (pin físico 24) → usar divisor 2:1 a 3.3V
+ECHO_BCM = 8    # ECHO  (pin físico 24)
+
 SPEED_SOUND = 340.0
 ECHO_TIMEOUT = 0.12
 SAMPLES = 5
